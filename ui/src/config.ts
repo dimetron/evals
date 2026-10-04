@@ -26,6 +26,7 @@ export const config = {
       evaluateStream: `${API_BASE_URL}/api/evaluate/stream`,
       runs: `${API_BASE_URL}/api/runs`,
       usage: `${API_BASE_URL}/api/usage`,
+      online: `${API_BASE_URL}/api/online`,
       evalSets: `${API_BASE_URL}/api/evalsets`,
       validateEvalSet: `${API_BASE_URL}/api/validate/eval-set`,
       streamingCreateEvalSet: `${API_BASE_URL}/api/streaming/create-eval-set`,

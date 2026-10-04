@@ -13,6 +13,9 @@ import type {
   UsageSeries,
   UsageCall,
   UsageSession,
+  OnlineStatus,
+  OnlineSeriesPoint,
+  OnlineAlert,
 } from '../lib/types';
 import { config } from '../config';
 import { evalSetFromWireFormat, evalSetToWireFormat } from '../lib/evalset-builder';
@@ -424,6 +427,27 @@ export async function getUsageCalls(hours: number, limit = 25): Promise<UsageCal
   if (response.status === 503) throw new StorageUnavailableError();
   if (!response.ok) throw new Error(`Failed to load top calls: ${httpStatusLabel(response)}`);
   return unwrap<UsageCall[]>(response);
+}
+
+export async function getOnlineStatus(): Promise<OnlineStatus> {
+  const response = await fetch(`${config.api.endpoints.online}/status`);
+  if (response.status === 503) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(`Failed to load online evaluation status: ${httpStatusLabel(response)}`);
+  return unwrap<OnlineStatus>(response);
+}
+
+export async function getOnlineSeries(hours: number): Promise<OnlineSeriesPoint[]> {
+  const response = await fetch(`${config.api.endpoints.online}/series?hours=${hours}`);
+  if (response.status === 503) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(`Failed to load quality series: ${httpStatusLabel(response)}`);
+  return unwrap<OnlineSeriesPoint[]>(response);
+}
+
+export async function getOnlineAlerts(state: 'open' | 'all' = 'open'): Promise<OnlineAlert[]> {
+  const response = await fetch(`${config.api.endpoints.online}/alerts?state=${state}`);
+  if (response.status === 503) throw new StorageUnavailableError();
+  if (!response.ok) throw new Error(`Failed to load quality alerts: ${httpStatusLabel(response)}`);
+  return unwrap<OnlineAlert[]>(response);
 }
 
 // AGENTEVALS-GO FORK: one row of GET /api/streaming/session-spans - a span

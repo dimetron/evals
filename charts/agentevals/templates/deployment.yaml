@@ -16,6 +16,11 @@ spec:
     metadata:
       labels:
         {{- include "agentevals.labels" . | nindent 8 }}
+      {{- if .Values.online.enabled }}
+      annotations:
+        # Restart on a profile change: the config is read once at startup.
+        checksum/online: {{ .Values.online.config | toJson | sha256sum }}
+      {{- end }}
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       {{- with .Values.imagePullSecrets }}
@@ -42,6 +47,9 @@ spec:
             {{- end }}
             {{- with .Values.adminGithubUsers }}
             - --admin-github-users={{ join "," . }}
+            {{- end }}
+            {{- if .Values.online.enabled }}
+            - --online-config=/etc/agentevals/online.json
             {{- end }}
           env:
             - name: AGENTEVALS_GITHUB_CLIENT_ID
@@ -76,6 +84,14 @@ spec:
                   key: JEV_API_KEY
                   optional: true
             {{- end }}
+            {{- if and .Values.online.enabled .Values.online.discordSecret }}
+            - name: AGENTEVALS_DISCORD_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.online.discordSecret }}
+                  key: DISCORD_WEBHOOK_URL
+                  optional: true
+            {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -105,7 +121,34 @@ spec:
           volumeMounts:
             - name: session-db
               mountPath: /data
+            {{- if .Values.online.enabled }}
+            - name: online-config
+              mountPath: /etc/agentevals
+              readOnly: true
+            {{- if .Values.online.webhookToken.enabled }}
+            - name: webhook-token
+              mountPath: /var/run/secrets/agentevals/webhook
+              readOnly: true
+            {{- end }}
+            {{- end }}
       volumes:
         - name: session-db
           persistentVolumeClaim:
             claimName: {{ .Values.persistence.claimName }}
+        {{- if .Values.online.enabled }}
+        - name: online-config
+          configMap:
+            name: agentevals-online
+        {{- if .Values.online.webhookToken.enabled }}
+        # Projected service-account token for the webhook sink
+        # (bearerTokenFile: /var/run/secrets/agentevals/webhook/token); the
+        # kubelet rotates it and the sink reads it on every send.
+        - name: webhook-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: {{ required "online.webhookToken.audience is required" .Values.online.webhookToken.audience }}
+                  expirationSeconds: 3600
+        {{- end }}
+        {{- end }}

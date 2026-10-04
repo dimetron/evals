@@ -190,6 +190,18 @@
   read back by ID on demand (trace, spans, a new span reopening them). The session list shows the in-memory
   ones. `--session-retention` (default 720h) deletes sessions not updated for that long once a day, then
   checkpoints the WAL and VACUUMs. The usage backfill runs only while the ledger is empty, streaming the archive.
+- **Online evaluation** (`internal/online`, `internal/api/online.go`, `onlinestore.go`,
+  `ui/src/components/quality/QualityView.tsx`) - additive over Python, which scores only uploaded traces.
+  With `--online-config` (needs `--session-db`), every completed session goes to a sampler: the call kind with
+  the most tokens picks a profile of evaluators; error, token/latency outlier and version/model change sessions
+  take a boost lane, the rest a per-(tenant, kind) hourly rate with fingerprint dedup; daily caps on Gemini judge
+  tokens (metered from response usage) and Jev calls. Scores go to `online_scores` and into one Run History run
+  per (tenant, kind, UTC hour), named `online · <tenant> · <kind>`, so the existing trend charts work. A
+  detector compares each (tenant, kind, metric) series' last window with its baseline (min samples, min drop,
+  2.5 standard errors), names a suspect version or model, and keeps alerts open/updated/resolved with
+  hysteresis in `online_alerts`. Sinks: Discord (alerts plus a daily digest) and a generic JSON webhook
+  (`agentevals.quality.v1`, optional bearer token file). `GET /api/online/status|series|alerts`, sidebar
+  "Quality" view. Design: [online-evaluation.md](online-evaluation.md).
 - **Span attributes and errors** (`internal/api/server.go`'s `sessionSpansHandler`, `SessionStore.SpanRows`,
   `ui/src/components/streaming/SpansPanel.tsx`) - additive over Python. The OTLP converter also keeps the span
   status message as `otel.status_description` and the first `exception` event's attributes

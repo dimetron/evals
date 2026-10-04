@@ -44,6 +44,10 @@ type evaluatorConfigDTO struct {
 	// Questions is the jev_custom evaluator's question set (see
 	// decision.ParseCustom). Additive over Python, backend-only.
 	Questions json.RawMessage `json:"questions,omitempty"`
+	// NumSamples is the judge samples per invocation; 0 means
+	// judge.DefaultNumSamples. Additive over Python, backend-only (online
+	// evaluation uses 1 to bound cost).
+	NumSamples int `json:"numSamples,omitempty"`
 }
 
 // evalConfigDTO is POST /api/evaluate's "config" form field, matching
@@ -555,8 +559,25 @@ func evaluateOneTrace(
 		return traceResult
 	}
 
-	expected := eval.FindExpectedInvocations(conv.Invocations, evalSet)
-	decisionResults, decisionModel := runDecisionEvaluators(ctx, evaluators, conv.Invocations, expected, getDecisionClient)
+	return evaluateInvocations(ctx, traceResult, conv.Invocations, evaluators, evalSet, getJudgeModel, getVertexEvalClient, getDecisionClient, onMetric)
+}
+
+// evaluateInvocations scores already-converted invocations into
+// traceResult; evaluateOneTrace's second half, split out so online
+// evaluation can score a trimmed invocation list.
+func evaluateInvocations(
+	ctx context.Context,
+	traceResult traceResultDTO,
+	invocations []adk.Invocation,
+	evaluators []evaluatorConfigDTO,
+	evalSet *adk.EvalSet,
+	getJudgeModel func(string) (judge.Model, error),
+	getVertexEvalClient func() (*vertexeval.Client, error),
+	getDecisionClient func() (*decision.Client, error),
+	onMetric func(traceResultDTO),
+) traceResultDTO {
+	expected := eval.FindExpectedInvocations(invocations, evalSet)
+	decisionResults, decisionModel := runDecisionEvaluators(ctx, evaluators, invocations, expected, getDecisionClient)
 
 	for i, evaluator := range evaluators {
 		if results, ok := decisionResults[i]; ok {
@@ -595,7 +616,11 @@ func evaluateOneTrace(
 			if err != nil {
 				result = eval.Result{MetricName: evaluator.Name, Error: err.Error()}
 			} else {
-				result = runJudgeMetric(ctx, evaluator.Name, model, conv.Invocations, expected, evaluator.Rubrics, judge.DefaultNumSamples, threshold)
+				numSamples := judge.DefaultNumSamples
+				if evaluator.NumSamples > 0 {
+					numSamples = evaluator.NumSamples
+				}
+				result = runJudgeMetric(ctx, evaluator.Name, model, invocations, expected, evaluator.Rubrics, numSamples, threshold)
 			}
 		case vertexEvalMetrics[evaluator.Name]:
 			judgeModelUsed = vertexEvalServiceLabel
@@ -603,14 +628,14 @@ func evaluateOneTrace(
 			if err != nil {
 				result = eval.Result{MetricName: evaluator.Name, Error: err.Error()}
 			} else {
-				result = runVertexEvalMetric(ctx, evaluator.Name, client, conv.Invocations, expected, threshold)
+				result = runVertexEvalMetric(ctx, evaluator.Name, client, invocations, expected, threshold)
 			}
 		default:
 			matchType, err := eval.ParseMatchType(evaluator.TrajectoryMatchType)
 			if err != nil {
 				result = eval.Result{MetricName: evaluator.Name, Error: err.Error()}
 			} else {
-				result = eval.RunMetric(evaluator.Name, conv.Invocations, expected, matchType, threshold)
+				result = eval.RunMetric(evaluator.Name, invocations, expected, matchType, threshold)
 			}
 		}
 		traceResult.MetricResults = append(traceResult.MetricResults, toMetricResultDTO(result, kind, judgeModelUsed))

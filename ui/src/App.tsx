@@ -9,6 +9,7 @@ import { LiveStreamingView } from './components/streaming/LiveStreamingView';
 import { AnnotationQueueView } from './components/annotation-queue/AnnotationQueueView';
 import { RunsView } from './components/runs/RunsView';
 import { UsageView } from './components/usage/UsageView';
+import { QualityView } from './components/quality/QualityView';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { SessionExpiredBanner } from './components/SessionExpiredBanner';
 
@@ -30,6 +31,7 @@ function AppContent() {
         {state.currentView === 'annotation-queue' && <AnnotationQueueView />}
         {state.currentView === 'runs' && <RunsView />}
         {state.currentView === 'usage' && <UsageView />}
+        {state.currentView === 'quality' && <QualityView />}
         {state.currentView === 'comparison' && (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-secondary)' }}>
             Comparison view coming soon...

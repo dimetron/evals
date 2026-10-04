@@ -253,6 +253,18 @@ type SessionStore struct {
 	maxMemory        int
 	sessionRetention time.Duration
 	lastSessionPrune time.Time
+
+	// onComplete, when set, is called with a session's ID after it
+	// completes, outside s.mu (online evaluation's hook). It must not
+	// block.
+	onComplete func(sessionID string)
+}
+
+// SetOnComplete registers the session-complete hook. Call before serving.
+func (s *SessionStore) SetOnComplete(fn func(sessionID string)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onComplete = fn
 }
 
 // Defaults for SessionLimits: the newest 200 completed sessions in memory,
@@ -917,7 +929,12 @@ func (s *SessionStore) completeSession(sessionID string) {
 	rootName, llmCalls, errs := spanOutline(session.Spans)
 	durationMs := spanWindowMs(session.Spans)
 	hub := s.hub
+	onComplete := s.onComplete
 	s.mu.Unlock()
+
+	if onComplete != nil {
+		onComplete(sessionID)
+	}
 
 	if hub != nil {
 		hub.broadcast(sessionCompleteEvent{

@@ -97,7 +97,39 @@ httpRoute:
     - /api/metrics
     - /api/runs
     - /api/usage
+    - /api/online
     - /api/streaming
     - /api/validate
     - /stream
     - /auth
+
+# Online evaluation (docs/online-evaluation.md): samples completed sessions,
+# scores them per call kind, detects regressions and notifies. Needs
+# persistence. `config` is the --online-config document, written in YAML here
+# and rendered to JSON.
+online:
+  enabled: false
+  # Secret with key DISCORD_WEBHOOK_URL; a discord sink reads it with
+  # urlEnv: AGENTEVALS_DISCORD_WEBHOOK.
+  discordSecret: ""
+  # A projected service-account token for a webhook sink that authenticates
+  # in-cluster callers by TokenReview.
+  webhookToken:
+    enabled: false
+    audience: ""
+  config:
+    budget:
+      judgeTokensPerDay: 2000000
+      jevCallsPerDay: 1000
+    sampling:
+      perKindPerHour: 6
+      boostPerKindPerHour: 6
+      afterChangeSessions: 20
+      dedupWindow: 6h
+    detector:
+      window: 6h
+      baseline: 168h
+      minSamples: 12
+      minDrop: 0.1
+    profiles: []
+    sinks: []

@@ -437,6 +437,8 @@ func serveCmd(args []string) error {
 		"delete archived sessions not updated for this long, once a day, then compact the file (0 = keep forever); falls back to AGENTEVALS_SESSION_RETENTION")
 	usageTenantAttr := fs.String("usage-tenant-attr", os.Getenv("AGENTEVALS_USAGE_TENANT_ATTR"),
 		"span attribute the token usage view reads the tenant from (e.g. tenant.id); empty records no tenant; falls back to AGENTEVALS_USAGE_TENANT_ATTR")
+	onlineConfig := fs.String("online-config", os.Getenv("AGENTEVALS_ONLINE_CONFIG"),
+		"JSON file that turns on online evaluation: sampling, per-kind evaluator profiles, daily judge caps, regression detection and notification sinks (see docs/online-evaluation.md); needs --session-db; falls back to AGENTEVALS_ONLINE_CONFIG")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -451,7 +453,7 @@ func serveCmd(args []string) error {
 		}
 	}
 	return api.Serve(*addr, *otlpAddr, *otlpGRPCAddr, *healthAddr, *sessionDB, *sessionSecret, githubOAuth, adminUsers, *defaultRole,
-		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr})
+		api.SessionLimits{Memory: *sessionMemory, Retention: *sessionRetention, UsageTenantAttr: *usageTenantAttr}, *onlineConfig)
 }
 
 // envIntOrDefault reads an integer env var, falling back to def when it is

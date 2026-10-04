@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/triageagent-dev/agentevals-go/internal/adk"
+	"github.com/triageagent-dev/agentevals-go/internal/online"
 	"github.com/triageagent-dev/agentevals-go/internal/otlp"
 	tracepkg "github.com/triageagent-dev/agentevals-go/internal/trace"
 	uiassets "github.com/triageagent-dev/agentevals-go/ui"
@@ -94,7 +95,7 @@ const persistInterval = 10 * time.Second
 // and how long archived sessions are kept (see SessionLimits). Blocks until any listener returns an error or the
 // process receives SIGINT/SIGTERM, in which case it flushes a final
 // snapshot before returning.
-func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits) error {
+func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecret string, githubOAuth *GitHubOAuthConfig, adminGitHubUsers []string, defaultRole string, limits SessionLimits, onlineConfigPath string) error {
 	hub := newSSEHub()
 
 	var store *SessionStore
@@ -115,6 +116,24 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 		defer store.Close()
 	} else {
 		store = NewSessionStore(hub)
+	}
+
+	// Online evaluation (docs/online-evaluation.md) needs the archive: it
+	// stores scores and alerts there and reads spans back by session.
+	var onlineEngine *OnlineEngine
+	if onlineConfigPath != "" {
+		if archive == nil {
+			return fmt.Errorf("--online-config needs --session-db")
+		}
+		cfg, err := online.Load(onlineConfigPath)
+		if err != nil {
+			return err
+		}
+		onlineEngine = NewOnlineEngine(cfg, archive, store, limits.UsageTenantAttr)
+		store.SetOnComplete(onlineEngine.Enqueue)
+		onlineStop := make(chan struct{})
+		defer close(onlineStop)
+		onlineEngine.Start(onlineStop)
 	}
 
 	var roleStore *RoleStore
@@ -148,6 +167,9 @@ func Serve(addr, otlpAddr, otlpGRPCAddr, healthAddr, sessionDBPath, sessionSecre
 	mux.HandleFunc("/api/convert", convertHandler)
 	mux.HandleFunc("/api/evaluate", evaluateHandler(archive))
 	mux.HandleFunc("/api/evaluate/stream", evaluateStreamHandler(archive))
+	mux.HandleFunc("/api/online/status", onlineStatusHandler(onlineEngine))
+	mux.HandleFunc("/api/online/series", onlineSeriesHandler(onlineEngine))
+	mux.HandleFunc("/api/online/alerts", onlineAlertsHandler(onlineEngine))
 	mux.HandleFunc("/api/admin/roles", adminRolesHandler(roleStore))
 	mux.HandleFunc("/api/admin/roles/{id}", adminRoleByIDHandler(roleStore))
 

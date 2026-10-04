@@ -36,6 +36,16 @@ type Model interface {
 type GenAIModel struct {
 	client *genai.Client
 	model  string
+	// onUsage, when set, receives each call's total token count (prompt,
+	// response and thinking), for the online evaluation budget. Additive
+	// over Python.
+	onUsage func(tokens int64)
+}
+
+// WithUsageHook sets a callback that receives each call's total tokens.
+func (m *GenAIModel) WithUsageHook(fn func(tokens int64)) *GenAIModel {
+	m.onUsage = fn
+	return m
 }
 
 // NewGenAIModel creates a judge model client. apiKey may be empty, in
@@ -79,6 +89,9 @@ func (m *GenAIModel) Generate(ctx context.Context, prompt string) (string, error
 	)
 	if err != nil {
 		return "", fmt.Errorf("judge model %s: %w", m.model, err)
+	}
+	if m.onUsage != nil && resp.UsageMetadata != nil {
+		m.onUsage(int64(resp.UsageMetadata.TotalTokenCount))
 	}
 	return resp.Text(), nil
 }

@@ -1,13 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { css } from '@emotion/react';
-import { Radio, Play, FileJson, Bug, History, Coins } from 'lucide-react';
+import { Radio, Play, FileJson, Bug, History, Coins, Gauge } from 'lucide-react';
 import { useTraceContext } from '../../context/TraceContext';
 import type { ViewType } from '../../lib/types';
 import { BugReportModal } from '../bug-report/BugReportModal';
 import { loadBugReport } from '../../api/client';
 import { UserMenu } from './UserMenu';
 
-type SidebarSection = 'streaming' | 'offline' | 'builder' | 'runs' | 'usage';
+type SidebarSection = 'streaming' | 'offline' | 'builder' | 'runs' | 'usage' | 'quality';
 
 function getActiveSection(currentView: ViewType): SidebarSection | null {
   switch (currentView) {
@@ -20,6 +20,7 @@ function getActiveSection(currentView: ViewType): SidebarSection | null {
     case 'builder': return 'builder';
     case 'runs': return 'runs';
     case 'usage': return 'usage';
+    case 'quality': return 'quality';
     default: return null;
   }
 }
@@ -84,6 +85,14 @@ export const Sidebar: React.FC = () => {
           >
             <Coins size={18} />
             Usage
+          </button>
+
+          <button
+            css={[navItemStyle, activeSection === 'quality' && activeItemStyle]}
+            onClick={() => actions.setCurrentView('quality')}
+          >
+            <Gauge size={18} />
+            Quality
           </button>
 
           <button

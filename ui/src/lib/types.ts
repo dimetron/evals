@@ -281,7 +281,7 @@ export interface EvalSetSummary {
 }
 
 // View types
-export type ViewType = 'welcome' | 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'annotation-queue' | 'runs' | 'usage';
+export type ViewType = 'welcome' | 'upload' | 'dashboard' | 'inspector' | 'comparison' | 'builder' | 'streaming' | 'annotation-queue' | 'runs' | 'usage' | 'quality';
 
 // Persisted run history (durable storage, GET /api/runs)
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -715,4 +715,52 @@ export interface UsageCall {
   inputTokens: number;
   outputTokens: number;
   isError: boolean;
+}
+
+// Online evaluation (GET /api/online/*) - additive over Python. See
+// docs/online-evaluation.md.
+export interface OnlineCost {
+  judgeTokens: number;
+  jevCalls: number;
+}
+
+export interface OnlineStatus {
+  profiles: string[];
+  budget: {
+    day: string;
+    caps: { judgeTokensPerDay: number; jevCallsPerDay: number };
+    spent: OnlineCost;
+    reserved: OnlineCost;
+  };
+  queue: number;
+  counts: Record<string, number>;
+  openAlerts: number;
+  sinks: string[];
+}
+
+export interface OnlineSeriesPoint {
+  bucketMs: number;
+  tenant: string;
+  kind: string;
+  metric: string;
+  mean: number;
+  n: number;
+}
+
+export interface OnlineAlert {
+  id: string;
+  key: { tenant: string; kind: string; metric: string };
+  status: 'open' | 'resolved';
+  openedAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+  last: {
+    baseMean: number;
+    curMean: number;
+    nBase: number;
+    nCur: number;
+    drop: number;
+    suspect?: string;
+    worst?: string[];
+  };
 }
