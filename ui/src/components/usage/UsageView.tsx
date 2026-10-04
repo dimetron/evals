@@ -40,12 +40,13 @@ const DIMENSIONS: { key: Dimension; label: string }[] = [
 // 3:1, which the breakdown table relieves). An eighth group and beyond fold
 // into "Other", which names its members in the legend and tooltip.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
-// Call kinds never fold: every kind is drawn under its own name. Three more
-// slots (red, olive, purple) are appended in an order that keeps the same
-// checks on adjacent pairs (worst CVD ΔE still 8.4, normal-vision 19.3; all
-// three clear 3:1); past ten kinds the slots repeat, and the legend, tooltip
-// and table still name each one.
-const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8'];
+// Call kinds never fold: every kind is drawn under its own name. Seven more
+// slots (red, olive, purple, lime, cyan, indigo, brown) are appended in an
+// order that keeps the same checks on adjacent pairs (worst CVD ΔE still 8.4,
+// normal-vision 19.3; all seven clear 3:1). The last four sit at least ΔE 9.1
+// from every other slot, above the existing worst pair (7.1). Past fourteen
+// kinds the slots repeat, and the legend, tooltip and table still name each.
+const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8', '#80a010', '#20a0b8', '#7060e0', '#a86048'];
 const OTHER_COLOR = '#6b7586';
 const OTHER = 'Other';
 const OTHER_NAMED = 3;
@@ -79,8 +80,16 @@ function addBucket(t: Totals, b: UsageBucket) {
   else t.cost += cost;
 }
 
+// Legacy decision-model kinds. The core used to tag these calls with several
+// kinds and now records them all as `decision` (ADR-063); spans still in the
+// window carry the old names, so fold them into one row. Plain `announce` and
+// `decide_event` (the MCP dry-run kind) stay as they are.
+const LEGACY_DECISION_KIND = /^(decide_event[.+]|announce\+)/;
+
 function groupName(b: UsageBucket, dim: Dimension): string {
-  return b[dim] || NONE;
+  const name = b[dim] || NONE;
+  if (dim === 'kind' && LEGACY_DECISION_KIND.test(name)) return 'decision';
+  return name;
 }
 
 function formatTokens(n: number): string {
