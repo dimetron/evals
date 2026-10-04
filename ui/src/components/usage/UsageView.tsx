@@ -38,10 +38,16 @@ const DIMENSIONS: { key: Dimension; label: string }[] = [
 // Categorical slots for the dark surface, in fixed order (validated against
 // --card-bg #252a36: CVD ΔE 8.4, normal-vision ΔE 19.3; green sits under
 // 3:1, which the breakdown table relieves). An eighth group and beyond fold
-// into "Other".
+// into "Other", which names its members in the legend and tooltip.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
+// Call kinds are a short known list, so up to ten never fold: three more
+// slots (red, olive, purple) appended in an order that keeps the same
+// checks on adjacent pairs (worst CVD ΔE still 8.4, normal-vision 19.3;
+// all three clear 3:1).
+const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8'];
 const OTHER_COLOR = '#6b7586';
 const OTHER = 'Other';
+const OTHER_NAMED = 3;
 const NONE = '(none)';
 
 const SURFACE = '#252a36';
@@ -81,6 +87,12 @@ function formatTokens(n: number): string {
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
   return String(n);
+}
+
+// "voice, batch, chat +2": the first few folded members, largest first.
+function memberList(members: string[]): string {
+  const more = members.length - OTHER_NAMED;
+  return members.slice(0, OTHER_NAMED).join(', ') + (more > 0 ? ` +${more}` : '');
 }
 
 function formatMs(ms: number): string {
@@ -143,14 +155,16 @@ export const UsageView: React.FC = () => {
     }
 
     // The seven largest groups keep a colour; the rest fold into Other.
-    // Colours follow the group, not its rank: kept groups are coloured
-    // alphabetically.
+    // Call kinds get ten slots and fold only past that. Colours follow the
+    // group, not its rank: kept groups are coloured alphabetically.
     const ranked = [...byGroup.entries()].sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));
-    const kept = new Set(ranked.slice(0, SLOTS.length).map(([g]) => g));
+    const slots = dim === 'kind' && ranked.length <= KIND_SLOTS.length ? KIND_SLOTS : SLOTS;
+    const kept = new Set(ranked.slice(0, slots.length).map(([g]) => g));
     const colourOrder = [...kept].sort((a, b) => a.localeCompare(b));
     const colour = new Map<string, string>();
-    colourOrder.forEach((g, i) => colour.set(g, SLOTS[i]));
+    colourOrder.forEach((g, i) => colour.set(g, slots[i]));
     const folded = (g: string) => (kept.has(g) ? g : OTHER);
+    const otherMembers = ranked.slice(kept.size).map(([g]) => g);
 
     // Time axis: every bucket in the window, empty ones included, so gaps read as gaps.
     const startAligned = Math.floor(series.from / series.bucketMs) * series.bucketMs;
@@ -159,18 +173,23 @@ export const UsageView: React.FC = () => {
     const index = new Map(starts.map((t, i) => [t, i]));
 
     const stacks = new Map<string, number[]>();
-    for (const g of [...colourOrder, ...(ranked.length > kept.size ? [OTHER] : [])]) {
+    for (const g of [...colourOrder, ...(otherMembers.length ? [OTHER] : [])]) {
       stacks.set(g, new Array(starts.length).fill(0));
     }
+    // Per time bucket, what Other is made of, so its tooltip can name it.
+    const otherParts = starts.map(() => new Map<string, number>());
     for (const b of series.buckets) {
       const i = index.get(b.start);
       if (i == null) continue;
-      stacks.get(folded(groupName(b, dim)))![i] += b.inputTokens + b.outputTokens;
+      const g = groupName(b, dim);
+      const tokens = b.inputTokens + b.outputTokens;
+      stacks.get(folded(g))![i] += tokens;
+      if (!kept.has(g)) otherParts[i].set(g, (otherParts[i].get(g) ?? 0) + tokens);
     }
 
     const datasetOrder = [...stacks.keys()];
     const datasets = datasetOrder.map((g, di) => ({
-      label: g,
+      label: g === OTHER ? `${OTHER} (${memberList(otherMembers)})` : g,
       data: stacks.get(g)!,
       backgroundColor: colour.get(g) ?? OTHER_COLOR,
       borderColor: SURFACE,
@@ -181,7 +200,9 @@ export const UsageView: React.FC = () => {
     }));
 
     const rows = ranked.map(([g, t]) => ({ group: g, colour: colour.get(g) ?? OTHER_COLOR, ...t }));
-    return { totals, rows, labels: starts.map(t => bucketLabel(t, series.bucketMs)), datasets };
+    // Index of the Other dataset (always last), or -1 when nothing folds.
+    const otherIndex = otherMembers.length ? datasets.length - 1 : -1;
+    return { totals, rows, labels: starts.map(t => bucketLabel(t, series.bucketMs)), datasets, otherIndex, otherParts };
   }, [series, dim]);
 
   const total = view ? view.totals.input + view.totals.output : 0;
@@ -258,7 +279,14 @@ export const UsageView: React.FC = () => {
                         filter: item => (item.raw as number) > 0,
                         itemSort: (a, b) => (b.raw as number) - (a.raw as number),
                         callbacks: {
-                          label: item => ` ${item.dataset.label}: ${formatTokens(item.raw as number)}`,
+                          label: item => {
+                            if (item.datasetIndex !== view.otherIndex) {
+                              return ` ${item.dataset.label}: ${formatTokens(item.raw as number)}`;
+                            }
+                            const parts = [...view.otherParts[item.dataIndex].entries()].sort((a, b) => b[1] - a[1]);
+                            const named = memberList(parts.map(([g, n]) => `${g} ${formatTokens(n)}`));
+                            return ` ${OTHER}: ${formatTokens(item.raw as number)} — ${named}`;
+                          },
                           footer: items => `Total: ${formatTokens(items.reduce((s, i) => s + (i.raw as number), 0))}`,
                         },
                       },
