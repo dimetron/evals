@@ -40,10 +40,11 @@ const DIMENSIONS: { key: Dimension; label: string }[] = [
 // 3:1, which the breakdown table relieves). An eighth group and beyond fold
 // into "Other", which names its members in the legend and tooltip.
 const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#008300', '#9085e9'];
-// Call kinds are a short known list, so up to ten never fold: three more
-// slots (red, olive, purple) appended in an order that keeps the same
-// checks on adjacent pairs (worst CVD ΔE still 8.4, normal-vision 19.3;
-// all three clear 3:1).
+// Call kinds never fold: every kind is drawn under its own name. Three more
+// slots (red, olive, purple) are appended in an order that keeps the same
+// checks on adjacent pairs (worst CVD ΔE still 8.4, normal-vision 19.3; all
+// three clear 3:1); past ten kinds the slots repeat, and the legend, tooltip
+// and table still name each one.
 const KIND_SLOTS = [...SLOTS, '#e66767', '#887800', '#a858b8'];
 const OTHER_COLOR = '#6b7586';
 const OTHER = 'Other';
@@ -155,14 +156,14 @@ export const UsageView: React.FC = () => {
     }
 
     // The seven largest groups keep a colour; the rest fold into Other.
-    // Call kinds get ten slots and fold only past that. Colours follow the
-    // group, not its rank: kept groups are coloured alphabetically.
+    // Call kinds never fold. Colours follow the group, not its rank: kept
+    // groups are coloured alphabetically.
     const ranked = [...byGroup.entries()].sort((a, b) => (b[1].input + b[1].output) - (a[1].input + a[1].output));
-    const slots = dim === 'kind' && ranked.length <= KIND_SLOTS.length ? KIND_SLOTS : SLOTS;
-    const kept = new Set(ranked.slice(0, slots.length).map(([g]) => g));
+    const slots = dim === 'kind' ? KIND_SLOTS : SLOTS;
+    const kept = new Set((dim === 'kind' ? ranked : ranked.slice(0, slots.length)).map(([g]) => g));
     const colourOrder = [...kept].sort((a, b) => a.localeCompare(b));
     const colour = new Map<string, string>();
-    colourOrder.forEach((g, i) => colour.set(g, slots[i]));
+    colourOrder.forEach((g, i) => colour.set(g, slots[i % slots.length]));
     const folded = (g: string) => (kept.has(g) ? g : OTHER);
     const otherMembers = ranked.slice(kept.size).map(([g]) => g);
 
