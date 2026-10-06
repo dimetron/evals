@@ -326,3 +326,12 @@ func TestRunRubricMetric_RetriesUnreadableReplyAndRecordsVerdicts(t *testing.T) 
 		t.Errorf("details = %+v", verdicts)
 	}
 }
+
+// A rationale that goes on as a list keeps every line.
+func TestParseRubricResponses_MultiLineRationale(t *testing.T) {
+	resp := "ID: rubric_0\nProperty: a\nEvidence: e\nRationale: Several claims fail. Specifically:\n- the 160Mi limit\n- the shipping latency\nVerdict: no\n"
+	got := parseRubricResponses(resp)
+	if len(got) != 1 || got[0].Rationale != "Several claims fail. Specifically:\n- the 160Mi limit\n- the shipping latency" {
+		t.Fatalf("got %+v", got)
+	}
+}

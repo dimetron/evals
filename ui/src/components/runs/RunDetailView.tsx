@@ -341,7 +341,11 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
                                           {r.rubric}
                                         </span>
                                       </div>
-                                      {r.rationale && <div css={sentenceRationaleStyle}>{r.rationale}</div>}
+                                      {r.rationale && (
+                                        <div css={sentenceRationaleStyle} style={{ whiteSpace: 'pre-wrap' }}>
+                                          {r.rationale}
+                                        </div>
+                                      )}
                                     </div>
                                   ))}
                                 </div>

@@ -55,6 +55,10 @@ var (
 	rubricPropertyPattern  = regexp.MustCompile(`(?m)^\s*Property: (.*)$`)
 	rubricRationalePattern = regexp.MustCompile(`Rationale: (.*)`)
 	rubricVerdictPattern   = regexp.MustCompile(`Verdict: (.*)`)
+	// rubricRationaleBlockPattern is the whole rationale up to its verdict:
+	// judges often write a line and then a list. Kept for display only;
+	// rubricRationalePattern stays the count check Python does.
+	rubricRationaleBlockPattern = regexp.MustCompile(`(?s)Rationale: (.*?)\n[ \t]*Verdict: `)
 )
 
 // rubricLabelPattern finds a label line the judge decorated with markdown
@@ -130,6 +134,16 @@ func parseRubricResponses(response string) []rubricResponse {
 		return nil
 	}
 
+	rationales := make([]string, len(rationaleMatches))
+	for i, m := range rationaleMatches {
+		rationales[i] = strings.TrimSpace(m[1])
+	}
+	if blocks := rubricRationaleBlockPattern.FindAllStringSubmatch(response, -1); len(blocks) == len(rationales) {
+		for i, m := range blocks {
+			rationales[i] = strings.TrimSpace(m[1])
+		}
+	}
+
 	responses := make([]rubricResponse, 0, len(propertyMatches))
 	for i, pm := range propertyMatches {
 		previousStart := -1
@@ -153,7 +167,7 @@ func parseRubricResponses(response string) []rubricResponse {
 		responses = append(responses, rubricResponse{
 			RubricID:     rubricID,
 			PropertyText: strings.TrimSpace(response[pm[2]:pm[3]]),
-			Rationale:    strings.TrimSpace(rationaleMatches[i][1]),
+			Rationale:    rationales[i],
 			Score:        scores[i],
 		})
 	}
