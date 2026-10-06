@@ -277,14 +277,15 @@ func TestNotifier_DiscordAndWebhook(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("TEST_DISCORD_URL", srv.URL)
-	n := &Notifier{Sinks: []Sink{{Type: "discord", URLEnv: "TEST_DISCORD_URL"}, {Type: "webhook", URL: srv.URL, BearerTokenFile: tok}}}
+	n := &Notifier{Sinks: []Sink{{Type: "discord", URLEnv: "TEST_DISCORD_URL"}, {Type: "webhook", URL: srv.URL, BearerTokenFile: tok},
+		{Type: "event", URL: srv.URL, BearerTokenFile: tok}}}
 	cfg := &Config{Detector: Detector{Window: Duration(6 * time.Hour), Baseline: Duration(168 * time.Hour)}}
 	a := &Alert{ID: "alert-1", Key: SeriesKey{Tenant: "shop", Kind: "rca", Metric: "jev_grounded"},
 		Last: TestResult{BaseMean: 0.9, CurMean: 0.6, NBase: 40, NCur: 12, Drop: 0.3, Suspect: "version v2", Worst: []string{"s1"}}}
 	if err := n.Alert(context.Background(), PayloadOf(EventOpen, a, cfg)); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
+	if len(got) != 3 {
 		t.Fatalf("got %d posts", len(got))
 	}
 	content, _ := got[0]["content"].(string)
@@ -298,6 +299,18 @@ func TestNotifier_DiscordAndWebhook(t *testing.T) {
 	}
 	if auth[0] != "" {
 		t.Error("discord must not get the bearer token")
+	}
+	ev := got[2]
+	msg, _ := ev["message"].(string)
+	if ev["type"] != EventTypeDegraded || ev["severity"] != "warning" || ev["source"] != "rca/jev_grounded" ||
+		ev["tenant"] != "shop" || !strings.Contains(msg, "0.90 → 0.60") || auth[2] != "Bearer secret" {
+		t.Errorf("event body %v auth %q", ev, auth[2])
+	}
+	if raw, _ := ev["raw"].(map[string]any); raw["alertId"] != "alert-1" {
+		t.Errorf("event raw = %v", ev["raw"])
+	}
+	if r := EventOf(PayloadOf(EventResolved, a, cfg)); r.Type != EventTypeRecovered || r.Severity != "info" || r.Source != "rca/jev_grounded" {
+		t.Errorf("resolved event = %+v", r)
 	}
 }
 

@@ -75,7 +75,8 @@ type Detector struct {
 
 // Sink is one notification target.
 type Sink struct {
-	// Type is "discord" or "webhook".
+	// Type is "discord", "webhook" (the AlertPayload body) or "event" (a
+	// generic event body, see EventOf).
 	Type string `json:"type"`
 	URL  string `json:"url,omitempty"`
 	// URLEnv names an env var holding the URL, so a secret URL (Discord's
@@ -261,9 +262,9 @@ func (c *Config) validate() error {
 	}
 	for _, s := range c.Sinks {
 		switch s.Type {
-		case "discord", "webhook":
+		case "discord", "webhook", "event":
 		default:
-			return fmt.Errorf("online config: sink type %q is not discord or webhook", s.Type)
+			return fmt.Errorf("online config: sink type %q is not discord, webhook or event", s.Type)
 		}
 		if s.URL == "" && s.URLEnv == "" {
 			return fmt.Errorf("online config: %s sink needs url or urlEnv", s.Type)

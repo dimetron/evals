@@ -107,6 +107,11 @@ flapping.
   `{"type": "agentevals.quality.v1", "status": "open|updated|resolved", …}`.
   An agent can consume it as input to its own self-tuning loop. agentevals
   knows nothing about the consumer.
+- **Event** (generic event-ingest body, same bearer token handling):
+  `{"type": "EvalQualityDegraded|EvalQualityRecovered", "severity":
+  "warning|info", "source": "<kind>/<metric>", "tenant", "message", "raw":
+  <webhook body>}`. Point it at a receiver that already takes this shape;
+  degraded and recovered on the same source open and close one record there.
 - **Daily digest** to Discord at 08:00 UTC: per kind, mean score with a 24h
   delta, sessions scored, judge spend against the cap, and open alerts.
 

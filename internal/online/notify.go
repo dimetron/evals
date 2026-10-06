@@ -65,6 +65,44 @@ func PayloadOf(event string, a *Alert, cfg *Config) AlertPayload {
 	}
 }
 
+// Event types of the generic event body. An open or worse alert degrades,
+// a resolved one recovers, so a receiver can open and close one record per
+// source.
+const (
+	EventTypeDegraded  = "EvalQualityDegraded"
+	EventTypeRecovered = "EvalQualityRecovered"
+)
+
+// GenericEvent is the "event" sink body: the common event-ingest shape
+// (type, message, severity, source, tenant, raw).
+type GenericEvent struct {
+	Type     string       `json:"type"`
+	Message  string       `json:"message"`
+	Severity string       `json:"severity"`
+	Source   string       `json:"source"`
+	Tenant   string       `json:"tenant,omitempty"`
+	Raw      AlertPayload `json:"raw"`
+}
+
+// EventOf maps an alert event to a generic event. The source is
+// "<kind>/<metric>", so each series has its own record at the receiver.
+func EventOf(p AlertPayload) GenericEvent {
+	e := GenericEvent{Source: p.Kind + "/" + p.Metric, Tenant: p.Tenant, Raw: p}
+	if p.Event == EventResolved {
+		e.Type, e.Severity = EventTypeRecovered, "info"
+		e.Message = fmt.Sprintf("%s quality %s recovered: %.2f vs %.2f baseline",
+			p.Kind, p.Metric, p.Current.Mean, p.Baseline.Mean)
+		return e
+	}
+	e.Type, e.Severity = EventTypeDegraded, "warning"
+	e.Message = fmt.Sprintf("%s quality %s dropped %.2f → %.2f (last %s, n=%d; baseline %s, n=%d)",
+		p.Kind, p.Metric, p.Baseline.Mean, p.Current.Mean, p.Current.Span, p.Current.N, p.Baseline.Span, p.Baseline.N)
+	if p.Suspect != "" {
+		e.Message += "; since " + p.Suspect
+	}
+	return e
+}
+
 // DiscordText renders an alert event as one Discord message.
 func DiscordText(p AlertPayload) string {
 	scope := p.Kind
@@ -178,6 +216,8 @@ func (n *Notifier) Alert(ctx context.Context, p AlertPayload) error {
 			err = n.discord(ctx, s, DiscordText(p))
 		case "webhook":
 			err = n.post(ctx, s, p)
+		case "event":
+			err = n.post(ctx, s, EventOf(p))
 		}
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", s.Type, err))

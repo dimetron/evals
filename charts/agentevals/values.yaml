@@ -115,8 +115,9 @@ online:
   # Secret with key DISCORD_WEBHOOK_URL; a discord sink reads it with
   # urlEnv: AGENTEVALS_DISCORD_WEBHOOK.
   discordSecret: ""
-  # A projected service-account token for a webhook sink that authenticates
-  # in-cluster callers by TokenReview.
+  # A projected service-account token for a webhook or event sink whose
+  # receiver authenticates in-cluster callers by TokenReview; set
+  # bearerTokenFile: /var/run/secrets/agentevals/webhook/token on the sink.
   webhookToken:
     enabled: false
     audience: ""
