@@ -16,6 +16,7 @@ import (
 
 	"github.com/triageagent-dev/agentevals-go/internal/adk"
 	"github.com/triageagent-dev/agentevals-go/internal/decision"
+	"github.com/triageagent-dev/agentevals-go/internal/eval"
 	"github.com/triageagent-dev/agentevals-go/internal/judge"
 	"github.com/triageagent-dev/agentevals-go/internal/online"
 	"github.com/triageagent-dev/agentevals-go/internal/vertexeval"
@@ -221,6 +222,9 @@ func (e *OnlineEngine) process(ctx context.Context, sessionID string) {
 		ConversionWarnings: []string{},
 		AgentName:          f.Service,
 	}, invocations, evaluators, nil, e.getJudge(evalCtx), noVertexEval, e.getJev, nil)
+	for i := range result.MetricResults {
+		result.MetricResults[i] = unscoredAsError(result.MetricResults[i])
+	}
 
 	actual := online.Cost{JudgeTokens: e.judgeTokens.Load()}
 	for _, m := range result.MetricResults {
@@ -714,4 +718,21 @@ func onlineAlertsHandler(e *OnlineEngine) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": alerts, "error": nil})
 	}
+}
+
+// unscoredAsError turns a NOT_EVALUATED metric (for a judge, a reply with
+// no readable verdict) into an error without a score. Recorded as a 0 it
+// would read as the worst quality and feed the detector a false drop.
+func unscoredAsError(m metricResultDTO) metricResultDTO {
+	if m.EvalStatus != string(eval.StatusNotEvaluated) {
+		return m
+	}
+	msg := "not evaluated: the metric produced no score for this session"
+	if strings.HasPrefix(m.MetricName, "rubric_based_") {
+		msg = "not evaluated: the judge gave no readable verdict for any rubric"
+	}
+	m.Score = nil
+	m.EvalStatus = "ERROR"
+	m.Error = &msg
+	return m
 }

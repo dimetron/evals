@@ -293,3 +293,36 @@ func TestToolCallsAndResponsesText_MatchesResponseByID(t *testing.T) {
 		}
 	}
 }
+
+// Gemini sometimes bolds the labels; the verdicts must still count.
+func TestParseRubricResponses_MarkdownLabels(t *testing.T) {
+	resp := "**ID:** rubric_0\n**Property:** The response is helpful\n**Evidence:** e\n**Rationale:** fine\n**Verdict:** yes\n\n" +
+		"- *ID*: rubric_1\n- *Property*: It is short\n- *Rationale*: long\n- *Verdict*: **no**\n"
+	got := matchRubricResponses(parseRubricResponses(resp), RubricsFromStrings([]string{"The response is helpful", "It is short"}))
+	if len(got) != 2 || got[0].Score == nil || *got[0].Score != 1 || got[1].Score == nil || *got[1].Score != 0 || got[1].Rationale != "long" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+// One unreadable reply is asked again, and the verdicts with their
+// rationale land in the details.
+func TestRunRubricMetric_RetriesUnreadableReplyAndRecordsVerdicts(t *testing.T) {
+	model := &scriptedModel{responses: []string{
+		"the model rambled with no verdict",
+		"ID: rubric_0\nProperty: a\nRationale: cites the frame\nVerdict: yes\nID: rubric_1\nProperty: b\nRationale: invents a limit\nVerdict: no\n",
+	}}
+	rubrics := RubricsFromStrings([]string{"a", "b"})
+	result, err := runRubricMetric(context.Background(), model, "rubric_based_final_response_quality_v1",
+		[]adk.Invocation{invocation("q", "a")}, rubrics, 1, 0.5, func(adk.Invocation) string { return "prompt" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.calls != 2 || result.Score != 0.5 || result.Status != eval.StatusPassed {
+		t.Fatalf("calls=%d result=%+v", model.calls, result)
+	}
+	inv := result.Details["rubric_invocations"].([]map[string]any)
+	verdicts := inv[0]["rubrics"].([]map[string]any)
+	if len(verdicts) != 2 || verdicts[1]["verdict"] != "no" || verdicts[1]["rationale"] != "invents a limit" || verdicts[1]["rubric"] != "b" {
+		t.Errorf("details = %+v", verdicts)
+	}
+}

@@ -45,8 +45,9 @@ func formatRubricsText(rubrics []Rubric) string {
 // judge's response for this rubric could not be parsed to yes/no
 // (NOT_EVALUATED for this rubric).
 type rubricScore struct {
-	RubricID string
-	Score    *float64
+	RubricID  string
+	Score     *float64
+	Rationale string
 }
 
 var (
@@ -55,6 +56,13 @@ var (
 	rubricRationalePattern = regexp.MustCompile(`Rationale: (.*)`)
 	rubricVerdictPattern   = regexp.MustCompile(`Verdict: (.*)`)
 )
+
+// rubricLabelPattern finds a label line the judge decorated with markdown
+// ("**Verdict:** yes", "- *Property*: ...", "### ID: rubric_0"), so the
+// plain label patterns above still match it. Not in Python: Gemini adds
+// this decoration now and then, and one such reply used to leave the whole
+// metric unscored.
+var rubricLabelPattern = regexp.MustCompile(`(?m)^[ \t>*_#-]*(ID|Property|Evidence|Rationale|Verdict)[*_]*[ \t]*:[*_]*[ \t]*`)
 
 var rubricSmartChars = strings.NewReplacer(
 	"\u2018", "'", "\u2019", "'",
@@ -87,6 +95,7 @@ func normalizeRubricText(text string) string {
 type rubricResponse struct {
 	RubricID     string // may be empty: the judge omitted (or mangled) the ID line.
 	PropertyText string
+	Rationale    string
 	Score        *float64
 }
 
@@ -96,6 +105,7 @@ type rubricResponse struct {
 // Python's parser does, rather than risk silently omitting a failed
 // rubric and inflating the score.
 func parseRubricResponses(response string) []rubricResponse {
+	response = rubricLabelPattern.ReplaceAllString(response, "$1: ")
 	propertyMatches := rubricPropertyPattern.FindAllStringSubmatchIndex(response, -1)
 	idMatches := rubricIDPattern.FindAllStringSubmatchIndex(response, -1)
 	rationaleMatches := rubricRationalePattern.FindAllStringSubmatch(response, -1)
@@ -143,6 +153,7 @@ func parseRubricResponses(response string) []rubricResponse {
 		responses = append(responses, rubricResponse{
 			RubricID:     rubricID,
 			PropertyText: strings.TrimSpace(response[pm[2]:pm[3]]),
+			Rationale:    strings.TrimSpace(rationaleMatches[i][1]),
 			Score:        scores[i],
 		})
 	}
@@ -176,7 +187,7 @@ func matchRubricResponses(responses []rubricResponse, rubrics []Rubric) []rubric
 		if !ok {
 			continue
 		}
-		scores = append(scores, rubricScore{RubricID: rubric.ID, Score: resp.Score})
+		scores = append(scores, rubricScore{RubricID: rubric.ID, Score: resp.Score, Rationale: resp.Rationale})
 	}
 	return scores
 }
@@ -267,37 +278,84 @@ func runRubricMetric(ctx context.Context, model Model, name string, actual []adk
 		numSamples = DefaultNumSamples
 	}
 
+	textByID := make(map[string]string, len(rubrics))
+	for _, r := range rubrics {
+		textByID[r.ID] = r.Text
+	}
 	perInvocation := make([]float64, len(actual))
+	perInvocationDetail := make([]map[string]any, 0, len(actual))
 	var allScores []rubricScore
 	for i, inv := range actual {
 		prompt := formatPrompt(inv)
 
 		samples := make([][]rubricScore, 0, numSamples)
 		for s := 0; s < numSamples; s++ {
-			resp, err := model.Generate(ctx, prompt)
+			matched, err := generateRubricSample(ctx, model, prompt, rubrics)
 			if err != nil {
 				return eval.Result{}, fmt.Errorf("invocation %d sample %d: %w", i, s, err)
 			}
-			parsed := parseRubricResponses(resp)
-			samples = append(samples, matchRubricResponses(parsed, rubrics))
+			samples = append(samples, matched)
 		}
 
 		aggregated := majorityVoteRubricScores(samples)
 		allScores = append(allScores, aggregated...)
-		if score := averageRubricScore(aggregated); score != nil {
+		score := averageRubricScore(aggregated)
+		if score != nil {
 			perInvocation[i] = *score
 		}
+		verdicts := make([]map[string]any, 0, len(aggregated))
+		for _, rs := range aggregated {
+			verdicts = append(verdicts, map[string]any{
+				"id": rs.RubricID, "rubric": textByID[rs.RubricID],
+				"verdict": verdictText(rs.Score), "rationale": rs.Rationale,
+			})
+		}
+		perInvocationDetail = append(perInvocationDetail, map[string]any{
+			"invocation_id": inv.InvocationID, "score": score, "rubrics": verdicts,
+		})
 	}
+	details := map[string]any{"rubric_invocations": perInvocationDetail}
 
 	overall := averageRubricScore(allScores)
 	if overall == nil {
-		return eval.Result{MetricName: name, Status: eval.StatusNotEvaluated}, nil
+		return eval.Result{MetricName: name, Status: eval.StatusNotEvaluated, Details: details}, nil
 	}
 	status := eval.StatusFailed
 	if *overall >= threshold {
 		status = eval.StatusPassed
 	}
-	return eval.Result{MetricName: name, Score: *overall, Status: status, PerInvocationScores: perInvocation}, nil
+	return eval.Result{MetricName: name, Score: *overall, Status: status, PerInvocationScores: perInvocation, Details: details}, nil
+}
+
+// generateRubricSample asks the judge once and matches its verdicts to the
+// rubrics. A reply with no readable verdict is asked once more: one bad
+// reply would otherwise leave this sample unscored.
+func generateRubricSample(ctx context.Context, model Model, prompt string, rubrics []Rubric) ([]rubricScore, error) {
+	var matched []rubricScore
+	for attempt := 0; attempt < 2; attempt++ {
+		resp, err := model.Generate(ctx, prompt)
+		if err != nil {
+			return nil, err
+		}
+		matched = matchRubricResponses(parseRubricResponses(resp), rubrics)
+		for _, m := range matched {
+			if m.Score != nil {
+				return matched, nil
+			}
+		}
+	}
+	return matched, nil
+}
+
+func verdictText(score *float64) any {
+	switch {
+	case score == nil:
+		return nil
+	case *score == 1.0:
+		return "yes"
+	default:
+		return "no"
+	}
 }
 
 // toolCallJSON / toolResponseJSON / toolCallAndResponseJSON /

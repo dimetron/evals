@@ -58,11 +58,15 @@ func onlineSessionBody(traceID string, startMs int64, kind, input, output string
 type usageJudge struct {
 	onUsage func(int64)
 	calls   int
+	reply   string // "" answers yes
 }
 
 func (j *usageJudge) Generate(ctx context.Context, prompt string) (string, error) {
 	j.calls++
 	j.onUsage(250)
+	if j.reply != "" {
+		return j.reply, nil
+	}
 	return "ID: rubric_0\nProperty: helpful\nRationale: fine\nVerdict: yes\n", nil
 }
 
@@ -226,5 +230,28 @@ func TestOnlineHandlers_UnconfiguredIs503(t *testing.T) {
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("code = %d", rec.Code)
 		}
+	}
+}
+
+// A judge reply with no readable verdict is an errored result without a
+// score, never a 0 the detector would read as a quality drop.
+func TestOnlineEngine_UnreadableJudgeIsErrorNotZero(t *testing.T) {
+	e, sessions, archive, fake := newTestEngine(t, testOnlineConfig)
+	fake.reply = "no verdict here"
+	now := time.Date(2026, 10, 4, 12, 30, 0, 0, time.UTC)
+	e.now = func() time.Time { return now }
+	sessions.Ingest(onlineSessionBody("dddddddddddd0001", now.UnixMilli(), "rca", "q", "a"))
+	e.process(context.Background(), "otlp-dddddddddddd")
+
+	if fake.calls != 2 {
+		t.Errorf("judge calls = %d, want 2 (one retry)", fake.calls)
+	}
+	if rows, _ := archive.OnlineSamples(0); len(rows) != 0 {
+		t.Errorf("samples = %+v, want none", rows)
+	}
+	runs, _ := archive.ListRuns([]string{"running"}, 10, "")
+	results, _ := archive.GetRunResults(runs[0].RunID)
+	if len(results) != 1 || results[0].Status != "errored" || results[0].Score != nil || results[0].ErrorText == nil {
+		t.Fatalf("results = %+v", results)
 	}
 }

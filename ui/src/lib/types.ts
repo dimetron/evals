@@ -318,6 +318,7 @@ export interface RunEvaluatorConfig {
   threshold?: number;
   judge_model?: string;
   trajectory_match_type?: string;
+  rubrics?: string[];
 }
 
 export interface RunSpecSummary {
@@ -352,9 +353,24 @@ export interface PersistedHallucinationInvocation {
   sentences: HallucinationSentence[];
 }
 
+// rubric_based_*_v1: one verdict per rubric, majority-voted over samples.
+export interface RubricVerdict {
+  id: string;
+  rubric: string;
+  verdict: 'yes' | 'no' | null;
+  rationale?: string;
+}
+
+export interface RubricInvocation {
+  invocation_id?: string | null;
+  score: number | null;
+  rubrics: RubricVerdict[];
+}
+
 export interface ResultDetails {
   comparisons?: PersistedComparison[];
   per_invocation?: PersistedHallucinationInvocation[];
+  rubric_invocations?: RubricInvocation[];
   // jev_* results (see MetricDetails).
   question?: string;
   question_type?: 'noul' | 'choice';

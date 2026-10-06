@@ -171,7 +171,16 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
                 <tbody>
                   {evaluators.map((e, i) => (
                     <tr key={i}>
-                      <td css={monoStyle}>{e.name ?? '-'}</td>
+                      <td css={monoStyle}>
+                        {e.name ?? '-'}
+                        {(e.rubrics ?? []).length > 0 && (
+                          <ul css={rubricListStyle}>
+                            {e.rubrics!.map((r, j) => (
+                              <li key={j}>{r}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
                       <td>{e.type ?? '-'}</td>
                       <td css={monoStyle}>{e.threshold ?? '-'}</td>
                       <td css={monoStyle}>{e.judge_model ?? '-'}</td>
@@ -205,7 +214,9 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
                     // detail under per_invocation too, in a different shape.
                     const hallucinationInvocations = isJev ? [] : row.details?.per_invocation ?? [];
                     const turns = isJev ? jevTurns(row.details) : [];
-                    const isExpandable = comparisons.length > 0 || hallucinationInvocations.length > 0 || turns.length > 0;
+                    const rubricInvocations = row.details?.rubric_invocations ?? [];
+                    const isExpandable =
+                      comparisons.length > 0 || hallucinationInvocations.length > 0 || turns.length > 0 || rubricInvocations.length > 0;
                     const isOpen = expanded.has(row.resultId);
                     return (
                       <div key={row.resultId} css={resultRowStyle}>
@@ -305,6 +316,35 @@ export const RunDetailView: React.FC<RunDetailViewProps> = ({ runId, onBack }) =
                                   </div>
                                 )}
                                 <div css={sentenceRationaleStyle}>{jevVerdict(t.answer)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {isOpen && rubricInvocations.length > 0 && (
+                          <div css={comparisonsStyle}>
+                            {rubricInvocations.map((inv, idx) => (
+                              <div key={inv.invocation_id ?? idx} css={invocationStyle}>
+                                <div css={invocationHeadStyle}>
+                                  invocation {idx + 1}
+                                  {inv.score !== null && (
+                                    <span css={subtleMonoStyle}>score {inv.score.toFixed(2)}</span>
+                                  )}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  {inv.rubrics.map((r, i) => (
+                                    <div key={r.id ?? i} css={sentenceBlockStyle}>
+                                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                        <span css={sentenceLabelBadgeStyle} style={{ color: rubricVerdictColor(r.verdict) }}>
+                                          {r.verdict ?? 'unread'}
+                                        </span>
+                                        <span css={monoStyle} style={{ color: 'var(--text-primary)' }}>
+                                          {r.rubric}
+                                        </span>
+                                      </div>
+                                      {r.rationale && <div css={sentenceRationaleStyle}>{r.rationale}</div>}
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -607,6 +647,20 @@ const toolCallStyle = css`
   color: var(--text-secondary);
   word-break: break-all;
 `;
+
+const rubricListStyle = css`
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+`;
+
+function rubricVerdictColor(verdict: 'yes' | 'no' | null): string {
+  if (verdict === 'yes') return 'var(--status-success)';
+  if (verdict === 'no') return 'var(--status-failure)';
+  return 'var(--text-secondary)';
+}
 
 const sentenceBlockStyle = css`
   padding: 8px 10px;
