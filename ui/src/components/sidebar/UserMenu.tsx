@@ -5,6 +5,8 @@ import { config } from '../../config';
 
 interface MeState {
   authenticated: boolean;
+  // false when the server runs without auth: no login to offer.
+  authEnabled?: boolean;
   username?: string;
 }
 
@@ -28,7 +30,7 @@ export function UserMenu() {
 
   // Render nothing while loading rather than flashing a "logged out" state
   // that the successful check would immediately replace.
-  if (!me) return null;
+  if (!me || me.authEnabled === false) return null;
 
   if (!me.authenticated) {
     return (

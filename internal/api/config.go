@@ -127,6 +127,13 @@ func metricsHandler(w http.ResponseWriter, r *http.Request) {
 func authMeHandler(sessionSecret string, ghTokens *githubTokenValidator, roleStore *RoleStore, org string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if sessionSecret == "" {
+			// Auth is off: there is no session to expire, and every caller
+			// is admin (roleInfoOrOpen). A 401 here would read as "session
+			// expired" in the UI.
+			_ = json.NewEncoder(w).Encode(map[string]any{"authenticated": false, "authEnabled": false})
+			return
+		}
 		username, ok := extractSessionUsername(r, sessionSecret, ghTokens)
 		if !ok {
 			w.WriteHeader(http.StatusUnauthorized)

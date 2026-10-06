@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -243,5 +244,15 @@ func TestUnauthenticatedRoutesNeverBlockOnMissingSession(t *testing.T) {
 	topMux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("gated API route status = %d, want 401 with no session", rec.Code)
+	}
+}
+
+// With auth off there is no session to expire: /auth/me answers 200 so the
+// UI shows no "session expired" banner.
+func TestAuthMeHandler_AuthOff(t *testing.T) {
+	rec := httptest.NewRecorder()
+	authMeHandler("", nil, nil, "")(rec, httptest.NewRequest(http.MethodGet, "/auth/me", nil))
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"authEnabled":false`)) {
+		t.Errorf("code = %d body = %s", rec.Code, rec.Body.String())
 	}
 }
