@@ -52,6 +52,7 @@ spec:
             - --online-config=/etc/agentevals/online.json
             {{- end }}
           env:
+            {{- if .Values.auth.enabled }}
             - name: AGENTEVALS_GITHUB_CLIENT_ID
               value: {{ .Values.auth.githubClientId | quote }}
             - name: AGENTEVALS_GITHUB_ORG
@@ -68,6 +69,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.auth.sessionSecret }}
                   key: SESSION_SECRET
+            {{- end }}
             {{- if .Values.vertex.enabled }}
             - name: GOOGLE_GENAI_USE_VERTEXAI
               value: "true"

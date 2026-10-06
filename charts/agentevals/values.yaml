@@ -37,6 +37,9 @@ usageTenantAttr: ""
 adminGithubUsers: []
 
 auth:
+  # -- GitHub login gate. false drops the auth env, so the server runs open
+  # (no session cookie, every caller is admin).
+  enabled: true
   githubClientId: ""
   githubOrg: ""
   publicUrl: ""
