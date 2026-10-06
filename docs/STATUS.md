@@ -278,7 +278,10 @@
   only shows a "Requires Rubrics" badge with no input yet). One known simplification: rubric-text matching
   skips true Unicode NFKC normalization (`_normalize_text`) since no NFKC implementation is available without
   adding an external Go dependency in this environment - smart-quote/whitespace/decoration normalization is
-  still applied, covering the common markdown-wrapping case.
+  still applied, covering the common markdown-wrapping case. Additive over Python: label lines the judge
+  decorates with markdown (`**Verdict:** yes`) are parsed too; a sample whose reply has no readable verdict is
+  asked once more; and each rubric's majority verdict and rationale are kept in `details.rubric_invocations`,
+  which Run History expands.
 - **`safety_v1`, `multi_turn_task_success_v1`, `multi_turn_trajectory_quality_v1`,
   `multi_turn_tool_use_quality_v1`** (`internal/vertexeval`) - a from-scratch Go REST client for Vertex AI's
   Managed Evaluation Service (`:evaluateInstances`), architecturally distinct from `internal/judge`: no prompt
