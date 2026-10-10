@@ -72,19 +72,30 @@ func TestSessionLimits_LoadRecentNewestFirst(t *testing.T) {
 		('b', '{"session_id":"b","is_complete":true}', '2026-01-02T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	snaps, err := archive.LoadRecent(1)
+	snaps, err := archive.LoadRecent(1, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(snaps) != 1 || snaps[0].SessionID != "b" {
-		t.Fatalf("LoadRecent(1) = %+v, want [b]", snaps)
+		t.Fatalf("LoadRecent(1, 0) = %+v, want [b]", snaps)
 	}
-	all, err := archive.LoadRecent(0)
+	all, err := archive.LoadRecent(0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(all) != 2 || all[0].SessionID != "a" || all[1].SessionID != "b" {
-		t.Fatalf("LoadRecent(0) = %+v, want [a b] oldest first", all)
+		t.Fatalf("LoadRecent(0, 0) = %+v, want [a b] oldest first", all)
+	}
+	// A byte budget smaller than one row still returns the newest session, and
+	// one that fits a single row drops the older ones.
+	for _, budget := range []int64{1, 50} {
+		capped, err := archive.LoadRecent(0, budget)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(capped) != 1 || capped[0].SessionID != "b" {
+			t.Fatalf("LoadRecent(0, %d) = %+v, want [b]", budget, capped)
+		}
 	}
 	archive.Close()
 }

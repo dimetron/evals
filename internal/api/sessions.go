@@ -390,7 +390,7 @@ func (s *SessionStore) LoadPersisted() error {
 	if s.maxMemory > 0 {
 		limit = s.maxMemory + 50
 	}
-	snapshots, err := s.store.LoadRecent(limit)
+	snapshots, err := s.store.LoadRecent(limit, restoreBudgetBytes)
 	if err != nil {
 		return fmt.Errorf("loading session archive: %w", err)
 	}
@@ -410,6 +410,10 @@ func (s *SessionStore) LoadPersisted() error {
 	}
 	return nil
 }
+
+// restoreBudgetBytes bounds the archived JSON read back into memory at start,
+// newest sessions first, whatever maxMemory allows.
+const restoreBudgetBytes = 16 << 20
 
 // restoreSession rebuilds a Session from its archived snapshot, with a
 // fresh extractor (see sessionSnapshot) and, for a completed session, its

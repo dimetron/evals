@@ -184,8 +184,10 @@ func (s *SQLiteStore) Delete(sessionID string) error {
 // (every session when limit <= 0), oldest first. Additive over Python,
 // which restores the whole archive: only the newest sessions are kept in
 // memory, older ones are read on demand with Load. A row that fails to
-// deserialize is logged and skipped rather than aborting the load.
-func (s *SQLiteStore) LoadRecent(limit int) ([]sessionSnapshot, error) {
+// deserialize is logged and skipped rather than aborting the load. maxBytes
+// (0 = none) stops the read once that much archived JSON is loaded; the newest
+// session is always kept.
+func (s *SQLiteStore) LoadRecent(limit int, maxBytes int64) ([]sessionSnapshot, error) {
 	q := "SELECT session_id, data FROM sessions ORDER BY updated_at DESC"
 	args := []any{}
 	if limit > 0 {
@@ -199,10 +201,19 @@ func (s *SQLiteStore) LoadRecent(limit int) ([]sessionSnapshot, error) {
 	defer rows.Close()
 
 	var result []sessionSnapshot
+	var used int64
 	for rows.Next() {
 		var id, data string
 		if err := rows.Scan(&id, &data); err != nil {
 			return nil, err
+		}
+		// A byte budget on top of the count: a session with many spans can
+		// be megabytes, and restoring the whole count at once is what
+		// OOM-killed a small pod at start. The newest session always comes
+		// back; older ones past the budget stay in the archive.
+		used += int64(len(data))
+		if maxBytes > 0 && used > maxBytes && len(result) > 0 {
+			break
 		}
 		var snap sessionSnapshot
 		if err := json.Unmarshal([]byte(data), &snap); err != nil {
