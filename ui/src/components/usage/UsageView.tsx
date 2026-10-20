@@ -109,6 +109,22 @@ function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
 }
 
+// A burst is a session that makes many model calls in a short span: a run
+// that does not stop, each turn re-sending its growing context. Its tokens
+// are one session's, so it ranks first in "Largest sessions" - but a daily
+// total hides it.
+const BURST_CALLS = 20;
+const BURST_WINDOW_MS = 10 * 60 * 1000;
+
+function isBurst(r: UsageSession): boolean {
+  return r.calls >= BURST_CALLS && r.end - r.start <= BURST_WINDOW_MS;
+}
+
+function formatSpan(ms: number): string {
+  const s = Math.max(1, Math.round(ms / 1000));
+  return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
+}
+
 function bucketLabel(start: number, bucketMs: number): string {
   const d = new Date(start);
   if (bucketMs >= 24 * 3600 * 1000) {
@@ -216,6 +232,7 @@ export const UsageView: React.FC = () => {
   }, [series, dim]);
 
   const total = view ? view.totals.input + view.totals.output : 0;
+  const bursts = useMemo(() => sessions.filter(isBurst), [sessions]);
 
   return (
     <div css={pageStyle}>
@@ -250,6 +267,21 @@ export const UsageView: React.FC = () => {
       </div>
 
       {error && <div css={errorStyle}>{error}</div>}
+
+      {view && bursts.length > 0 && (
+        <div css={burstBannerStyle} role="alert">
+          <strong>
+            {bursts.length === 1 ? 'One session ran away' : `${bursts.length} sessions ran away`}
+          </strong>
+          {bursts.slice(0, 3).map(r => (
+            <div key={`${r.sessionId}|${r.model}`} css={burstLineStyle}>
+              {r.calls.toLocaleString()} calls in {formatSpan(r.end - r.start)}, {formatTokens(r.inputTokens + r.outputTokens)} tokens
+              {' · '}{r.kinds || NONE}{' · '}{r.tenants || NONE}{' · '}{r.model}{' · '}
+              <span css={monoStyle} title={r.sessionId}>{r.sessionId}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {view && (
         <>
@@ -399,7 +431,7 @@ export const UsageView: React.FC = () => {
                           <td>{r.kinds || NONE}{r.errors > 0 && <span css={failTagStyle}>{r.errors} failed</span>}</td>
                           <td>{r.tenants || NONE}</td>
                           <td css={monoStyle}>{r.model}</td>
-                          <td css={numStyle}>{r.calls.toLocaleString()}</td>
+                          <td css={numStyle}>{isBurst(r) && <span css={failTagStyle} title={`${r.calls} calls in ${formatSpan(r.end - r.start)}`}>burst</span>}{r.calls.toLocaleString()}</td>
                           <td css={numStyle}>{formatTokens(r.inputTokens)}</td>
                           <td css={numStyle}>{formatTokens(r.outputTokens)}</td>
                           <td css={numStyle}>{formatTokens(r.peakTokens)}</td>
@@ -521,6 +553,20 @@ const errorStyle = css`
   border-radius: 8px;
   color: var(--text-primary);
   margin-bottom: 20px;
+`;
+
+const burstBannerStyle = css`
+  padding: 12px 16px;
+  border: 1px solid var(--status-failure);
+  border-radius: 8px;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+`;
+
+const burstLineStyle = css`
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 `;
 
 const tilesStyle = css`

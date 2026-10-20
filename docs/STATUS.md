@@ -182,7 +182,11 @@
   `GET /api/usage?hours=N` returns (bucket, service, tenant, kind, model) cells, hourly up to four days and daily
   beyond; `GET /api/usage/calls` lists the largest calls. The UI view shows totals, estimated cost
   (`lib/pricing.ts`), tokens over time stacked by kind/tenant/model/service, a breakdown table and the largest
-  calls. Needs `--session-db`; returns 503 without it.
+  calls. A session that makes 20 or more calls within 10 minutes (a run that does not stop, each turn
+  re-sending its growing context) raises a banner above the totals and a `burst` tag on its row in the largest
+  sessions; the check reads the 25 largest sessions of the window, so a burst of small calls can miss it. A
+  daily total hides such a session, and the Live Agent Sessions list drops it once newer sessions evict it from
+  memory (below), so this view is where it stays visible. Needs `--session-db`; returns 503 without it.
 - **Session memory cap and retention** (`internal/api/sessions.go`'s `evictLocked`/`lookupLocked`/
   `pruneSessions`, `sqlitestore.go`'s `LoadRecent`/`Load`/`PruneSessions`/`Compact`) - additive over Python, which
   restores the whole archive into memory and keeps every session forever. With `--session-db`, only the newest
